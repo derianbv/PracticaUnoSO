@@ -1,0 +1,73 @@
+PRÁCTICA 1 - SISTEMAS OPERATIVOS
+=================================
+Estudiante: 
+* 
+*
+*
+
+Dataset: Viajes de taxi amarillo de Nueva York (NYC Yellow Taxi)
+Archivo original: dataset_grande.csv (combinación de varios meses de 2024)
+Tamaño del dataset: ~1 GB, 13 millones de registros.
+
+DESCRIPCIÓN DEL DATASET
+-----------------------
+El dataset contiene registros de viajes en taxi amarillo en Nueva York.
+Cada registro incluye: VendorID, fechas de recogida y llegada, número de
+pasajeros, distancia, ubicación de recogida (PULocationID), ubicación de
+destino (DOLocationID), tipo de pago, tarifa y total.
+
+CRITERIOS DE BÚSQUEDA IMPLEMENTADOS
+------------------------------------
+- Búsqueda por PULocationID (identificador de la zona de recogida).
+Se eligió este campo porque es un identificador numérico que permite
+una distribución uniforme en la tabla hash.
+
+ESTRUCTURA DEL PROGRAMA
+------------------------
+El programa consta de tres componentes:
+
+1. indexador: Lee el CSV, calcula el hash para cada registro (usando
+   PULocationID) y construye un archivo binario (viajes.dat) con listas
+   enlazadas para manejar colisiones. También genera tabla_hash.dat
+   (8 KB) que contiene los offsets iniciales de cada cadena.
+
+2. servidor: Carga la tabla hash en memoria (8 KB), abre viajes.dat y
+   espera peticiones a través de una tubería nombrada. Al recibir un
+   PULocationID, recorre la lista enlazada correspondiente y devuelve
+   todos los registros que coinciden.
+
+3. interfaz: Muestra un menú interactivo, envía el ID al servidor por
+   tubería y muestra los resultados recibidos.
+
+COMUNICACIÓN ENTRE PROCESOS
+----------------------------
+Se utilizan tuberías nombradas (FIFOs) en /tmp/tuberia_peticion y
+/tmp/tuberia_respuesta. Los procesos no están emparentados.
+
+LÍMITE DE MEMORIA
+------------------
+El servidor solo carga la tabla hash (8 KB), cumpliendo con el requisito
+de no superar los 10 MB de RAM. El archivo de datos permanece en disco.
+
+TIEMPO DE BÚSQUEDA
+-------------------
+Las búsquedas son prácticamente instantáneas (< 2 segundos) gracias a la
+tabla hash y las listas enlazadas.
+
+INSTRUCCIONES DE COMPILACIÓN Y EJECUCIÓN
+-----------------------------------------
+
+
+
+
+
+
+
+
+OBSERVACIONES
+--------------
+- El indexador debe ejecutarse una sola vez para generar viajes.dat y
+  tabla_hash.dat. Si se modifica el dataset, hay que volver a indexar.
+- Al salir de la interfaz con la opción 2, se envía un 0 al servidor
+  para que termine.
+- Los resultados se muestran en la interfaz a medida que llegan.
