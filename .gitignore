@@ -1,2 +1,16 @@
 spotify_dataset.csv
 *.Zone.Identifier
+
+# Binarios/artefactos compilados (C/C++)
+*.o
+*.obj
+*.out
+*.exe
+*.a
+*.so
+
+# Ejecutables generados en este repo
+p1-dataProgram
+practica1/indexador
+practica1/interfaz
+practica1/servidor
