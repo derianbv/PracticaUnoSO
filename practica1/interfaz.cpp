@@ -21,12 +21,11 @@ int main() {
                 cout << "Ingrese PULocationID a buscar: ";
                 cin >> criterio;
                 
-                // Enviar petición al servidor
+                
                 int fd_peticion = open("/tmp/tuberia_peticion", O_WRONLY);
                 write(fd_peticion, &criterio, sizeof(int));
                 close(fd_peticion);
                 
-                // Recibir respuestas
                 int fd_respuesta = open("/tmp/tuberia_respuesta", O_RDONLY);
                 Registro r;
                 int contador = 0;
@@ -36,7 +35,7 @@ int main() {
                 
                 while (true) {
                     read(fd_respuesta, &r, sizeof(Registro));
-                    if (r.pulID == -1) break;  // Marca de fin
+                    if (r.pulID == -1) break;  
                     
                     contador++;
                     cout << "\n--- VIAJE " << contador << " ---" << endl;
@@ -58,7 +57,7 @@ int main() {
             
             case 2: {
                 cout << "Saliendo..." << endl;
-                // Avisar al servidor que termine
+                
                 int fd_peticion = open("/tmp/tuberia_peticion", O_WRONLY);
                 int salir = 0;
                 write(fd_peticion, &salir, sizeof(int));
