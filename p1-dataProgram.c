@@ -7,7 +7,7 @@
 
 #include "hash_util.c"
 
-#define MAX_CHARS 256
+#define MAX_CHARS 256 //maximo largo de los strings
 #define SHM_KEY 0x44504131
 
 //variables del semaforo
