@@ -1,9 +1,13 @@
 #ifndef HASH_UTIL_H
 #define HASH_UTIL_H
 
+#include <stddef.h>
+
 typedef struct NodoHash {
     char *clave;
-    long long posicion;
+    long long *posiciones;
+    size_t cantidad_posiciones;
+    size_t capacidad_posiciones;
     struct NodoHash *siguiente;
 } NodoHash;
 

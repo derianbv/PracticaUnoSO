@@ -294,48 +294,52 @@ int main(void) {
 
             while (actual != NULL) {
                 if (strcmp(actual->clave, ptrCanalRespuesta->terminoBusqueda) == 0) {
-                    char lineaCsv[15000];
-                    size_t usadosLinea = 0;
-                    char c;
+                    size_t p;
+                    total = (int) actual->cantidad_posiciones;
 
-                    total++;
+                    for (p = 0; p < actual->cantidad_posiciones; p++) {
+                        char lineaCsv[15000];
+                        size_t usadosLinea = 0;
+                        char c;
 
-                    if (mostrados >= MAX_COINCIDENCIAS_MOSTRADAS) {
-                        actual = actual->siguiente;
-                        continue;
-                    }
+                        if (mostrados >= MAX_COINCIDENCIAS_MOSTRADAS) {
+                            break;
+                        }
 
-                    append_texto(ptrCanalRespuesta->textoRespuesta,
-                                 TAMANO_BUFFER_RESPUESTA,
-                                 &usados,
-                                 "---- Coincidencia ----\n");
+                        append_texto(ptrCanalRespuesta->textoRespuesta,
+                                     TAMANO_BUFFER_RESPUESTA,
+                                     &usados,
+                                     "---- Coincidencia ----\n");
 
-                    lineaCsv[0] = '\0';
-                    if (fseek(ptrArchivoDataset, actual->posicion, SEEK_SET) == 0) {
-                        while (fread(&c, 1, 1, ptrArchivoDataset) == 1) {
-                            if (c == '\r') {
-                                continue;
-                            }
-                            if (c == '\n') {
-                                break;
-                            }
-                            if ((usadosLinea + 1) < sizeof(lineaCsv)) {
-                                lineaCsv[usadosLinea] = c;
-                                usadosLinea++;
+                        lineaCsv[0] = '\0';
+                        if (fseek(ptrArchivoDataset, actual->posiciones[p], SEEK_SET) == 0) {
+                            while (fread(&c, 1, 1, ptrArchivoDataset) == 1) {
+                                if (c == '\r') {
+                                    continue;
+                                }
+                                if (c == '\n') {
+                                    break;
+                                }
+                                if ((usadosLinea + 1) < sizeof(lineaCsv)) {
+                                    lineaCsv[usadosLinea] = c;
+                                    usadosLinea++;
+                                }
                             }
                         }
-                    }
-                    lineaCsv[usadosLinea] = '\0';
+                        lineaCsv[usadosLinea] = '\0';
 
-                    append_texto(ptrCanalRespuesta->textoRespuesta,
-                                 TAMANO_BUFFER_RESPUESTA,
-                                 &usados,
-                                 lineaCsv);
-                    append_texto(ptrCanalRespuesta->textoRespuesta,
-                                 TAMANO_BUFFER_RESPUESTA,
-                                 &usados,
-                                 "\n\n");
-                    mostrados++;
+                        append_texto(ptrCanalRespuesta->textoRespuesta,
+                                     TAMANO_BUFFER_RESPUESTA,
+                                     &usados,
+                                     lineaCsv);
+                        append_texto(ptrCanalRespuesta->textoRespuesta,
+                                     TAMANO_BUFFER_RESPUESTA,
+                                     &usados,
+                                     "\n\n");
+                        mostrados++;
+                    }
+
+                    break;
                 }
                 actual = actual->siguiente;
             }

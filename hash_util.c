@@ -64,6 +64,7 @@ void liberar_tabla_hash(TablaHash *tabla)
         while (actual != NULL) {
             NodoHash *siguiente = actual->siguiente;
             free(actual->clave);
+            free(actual->posiciones);
             free(actual);
             actual = siguiente;
         }
@@ -76,6 +77,7 @@ void liberar_tabla_hash(TablaHash *tabla)
 int insertar_en_tabla_hash(TablaHash *tabla, const char *clave, long long posicion)
 {
     unsigned int indice;
+    NodoHash *actual;
     NodoHash *nuevo;
     size_t largo;
 
@@ -84,6 +86,31 @@ int insertar_en_tabla_hash(TablaHash *tabla, const char *clave, long long posici
     }
 
     indice = obtener_indice_hash(clave, tabla->capacidad);
+    actual = tabla->cubetas[indice];
+
+    while (actual != NULL) {
+        if (strcmp(actual->clave, clave) == 0) {
+            if (actual->cantidad_posiciones == actual->capacidad_posiciones) {
+                size_t nueva_capacidad = actual->capacidad_posiciones * 2;
+                long long *nuevas_posiciones =
+                    (long long *) realloc(actual->posiciones,
+                                          nueva_capacidad * sizeof(long long));
+
+                if (nuevas_posiciones == NULL) {
+                    return 0;
+                }
+
+                actual->posiciones = nuevas_posiciones;
+                actual->capacidad_posiciones = nueva_capacidad;
+            }
+
+            actual->posiciones[actual->cantidad_posiciones] = posicion;
+            actual->cantidad_posiciones++;
+            return 1;
+        }
+
+        actual = actual->siguiente;
+    }
 
     nuevo = (NodoHash *) malloc(sizeof(NodoHash));
     if (nuevo == NULL) {
@@ -98,7 +125,18 @@ int insertar_en_tabla_hash(TablaHash *tabla, const char *clave, long long posici
     }
 
     memcpy(nuevo->clave, clave, largo + 1);
-    nuevo->posicion = posicion;
+    nuevo->capacidad_posiciones = 2;
+    nuevo->cantidad_posiciones = 1;
+    nuevo->posiciones =
+        (long long *) malloc(nuevo->capacidad_posiciones * sizeof(long long));
+
+    if (nuevo->posiciones == NULL) {
+        free(nuevo->clave);
+        free(nuevo);
+        return 0;
+    }
+
+    nuevo->posiciones[0] = posicion;
 
     /* Encadenamiento: inserta al inicio de la lista de la cubeta. */
     nuevo->siguiente = tabla->cubetas[indice];
