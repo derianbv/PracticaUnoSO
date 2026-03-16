@@ -11,6 +11,11 @@ spotify_dataset.csv
 
 # Ejecutables generados en este repo
 p1-dataProgram
+p1-gui
+gui
 practica1/indexador
 practica1/interfaz
 practica1/servidor
+
+# Carpetas auxiliares locales
+prueba1/
