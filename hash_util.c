@@ -1,35 +1,16 @@
 #include "hash_util.h"
 
-#include <ctype.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-static unsigned char minuscula(unsigned char c)
-{
-    return (unsigned char) tolower((int) c);
-}
-
-static int iguales_sin_mayusculas(const char *a, const char *b)
-{
-    while (*a != '\0' && *b != '\0') {
-        if (minuscula((unsigned char) *a) != minuscula((unsigned char) *b)) {
-            return 0;
-        }
-        a++;
-        b++;
-    }
-
-    return (*a == '\0' && *b == '\0');
-}
 
 unsigned long long calcular_hash_fnv1a(const char *texto)
 {
     uint64_t hash = 1469598103934665603ULL;
 
     while (*texto != '\0') {
-        hash ^= minuscula((unsigned char) *texto);
+        hash ^= (unsigned char) *texto;
         hash *= 1099511628211ULL;
         texto++;
     }
@@ -140,7 +121,7 @@ int contar_coincidencias_hash(const TablaHash *tabla, const char *clave)
     actual = tabla->cubetas[indice];
 
     while (actual != NULL) {
-        if (iguales_sin_mayusculas(actual->clave, clave)) {
+        if (strcmp(actual->clave, clave) == 0) {
             total++;
         }
         actual = actual->siguiente;
@@ -164,7 +145,7 @@ int imprimir_coincidencias_hash(const TablaHash *tabla, const char *clave)
     actual = tabla->cubetas[indice];
 
     while (actual != NULL) {
-        if (iguales_sin_mayusculas(actual->clave, clave)) {
+        if (strcmp(actual->clave, clave) == 0) {
             if (primero) {
                 printf("%s:", clave);
                 primero = 0;
@@ -215,7 +196,7 @@ int escribir_coincidencias_hash(const TablaHash *tabla, const char *clave,
     actual = tabla->cubetas[indice];
 
     while (actual != NULL) {
-        if (iguales_sin_mayusculas(actual->clave, clave)) {
+        if (strcmp(actual->clave, clave) == 0) {
             int escritos;
 
             escritos = snprintf(buffer + usados, buffer_tamano - usados,
@@ -264,7 +245,7 @@ void imprimir_todo_el_indice(const TablaHash *tabla)
             int primero = 1;
 
             while (anterior != nodo) {
-                if (iguales_sin_mayusculas(anterior->clave, nodo->clave)) {
+                if (strcmp(anterior->clave, nodo->clave) == 0) {
                     es_primera_vez = 0;
                     break;
                 }
@@ -275,7 +256,7 @@ void imprimir_todo_el_indice(const TablaHash *tabla)
                 printf("%s:", nodo->clave);
 
                 while (it != NULL) {
-                    if (iguales_sin_mayusculas(it->clave, nodo->clave)) {
+                    if (strcmp(it->clave, nodo->clave) == 0) {
                         if (!primero) {
                             printf(",");
                         }

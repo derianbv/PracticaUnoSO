@@ -7,136 +7,302 @@
 
 #include "hash_util.h"
 
-#define MAX_FILAS 500000
 #define MAX_CHARS 256
 #define SHM_KEY 0x44504131
 
+//variables del semaforo
 #define ESTADO_LIBRE 0
 #define ESTADO_PETICION 1
 #define ESTADO_RESPUESTA 2
 #define ESTADO_SALIR 3
 
-#define RESPUESTA_TAM 65536
-#define OFFSET_ESTADO 0
-#define OFFSET_TOTAL (OFFSET_ESTADO + (int) sizeof(int))
-#define OFFSET_ARTISTA (OFFSET_TOTAL + (int) sizeof(int))
-#define OFFSET_RESPUESTA (OFFSET_ARTISTA + MAX_CHARS)
-#define SHM_TAM (OFFSET_RESPUESTA + RESPUESTA_TAM)
+#define TAMANO_BUFFER_RESPUESTA 262144
+
+typedef struct RespuestaCanal {
+    int estado;
+    int totalResultados;
+    char nombreArtista[MAX_CHARS];
+    char textoRespuesta[TAMANO_BUFFER_RESPUESTA];
+} RespuestaCanal;
+
+static void append_texto(char *destino, size_t capacidad, size_t *usados,
+                         const char *texto)
+{
+    size_t i = 0;
+
+    if (destino == NULL || usados == NULL || texto == NULL || capacidad == 0) {
+        return;
+    }
+
+    while (texto[i] != '\0' && (*usados + 1) < capacidad) {
+        destino[*usados] = texto[i];
+        (*usados)++;
+        i++;
+    }
+
+    destino[*usados] = '\0';
+}
+
+static void append_entero_ll(char *destino, size_t capacidad, size_t *usados,
+                             long long valor)
+{
+    char temporal[32];
+    int i = 0;
+    unsigned long long numero;
+
+    if (destino == NULL || usados == NULL || capacidad == 0) {
+        return;
+    }
+
+    if (valor < 0) {
+        append_texto(destino, capacidad, usados, "-");
+        numero = (unsigned long long) (-(valor + 1)) + 1ULL;
+    }
+    else {
+        numero = (unsigned long long) valor;
+    }
+
+    if (numero == 0ULL) {
+        append_texto(destino, capacidad, usados, "0");
+        return;
+    }
+
+    while (numero > 0ULL && i < (int) sizeof(temporal)) {
+        temporal[i++] = (char) ('0' + (numero % 10ULL));
+        numero /= 10ULL;
+    }
+
+    while (i > 0) {
+        i--;
+        if ((*usados + 1) >= capacidad) {
+            break;
+        }
+        destino[*usados] = temporal[i];
+        (*usados)++;
+    }
+
+    destino[*usados] = '\0';
+}
+
+static void append_entero(char *destino, size_t capacidad, size_t *usados,
+                          int valor)
+{
+    append_entero_ll(destino, capacidad, usados, (long long) valor);
+}
 
 int main(void) {
     // 1. Estructura de indice en hash
-    TablaHash *tabla_artistas = crear_tabla_hash(10007);
-    int shmid;
-    char *memoria;
-    int *estado;
-    int *total_compartido;
-    char *artista_compartido;
-    char *respuesta_compartida;
+    TablaHash *ptrTablaHashArtistas = crear_tabla_hash(10007);
+    int idMemoriaCompartida;
+    int idMemoriaVieja;
+    RespuestaCanal *ptrCanalRespuesta;
 
-    if (tabla_artistas == NULL) {
+    if (ptrTablaHashArtistas == NULL) {
         printf("Error: No se pudo crear la tabla hash.\n");
         return 1;
     }
 
-    FILE *archivo = fopen("spotify_dataset.csv", "rb");
-    if (!archivo) {
+    FILE *ptrArchivoDataset = fopen("spotify_dataset.csv", "rb");
+    if (!ptrArchivoDataset) {
         printf("Error: No se encontró el archivo spotify_dataset.csv\n");
-        liberar_tabla_hash(tabla_artistas);
+        liberar_tabla_hash(ptrTablaHashArtistas);
         return 1;
     }
 
-    char linea[15000]; // Buffer extra grande para las letras de canciones
-    int fila_actual = 0;
-
+    char bufferLineaCSV[15000]; // Buffer extra grande para las letras de canciones
     // Saltar la línea de cabecera
-    if (!fgets(linea, sizeof(linea), archivo)) {
+    if (!fgets(bufferLineaCSV, sizeof(bufferLineaCSV), ptrArchivoDataset)) {
         printf("Archivo vacío.\n");
-        fclose(archivo);
-        liberar_tabla_hash(tabla_artistas);
+        fclose(ptrArchivoDataset);
+        liberar_tabla_hash(ptrTablaHashArtistas);
         return 1;
     }
 
     // 2. Lectura y guardado
-    while (fila_actual < MAX_FILAS) {
-        long long posicion_byte = ftell(archivo);
-        char artista[MAX_CHARS];
-        int i = 0, j = 0, en_comillas = 0;
+    while (1) {
+        long long posicionByte = ftell(ptrArchivoDataset);
+        char bufferArtista[MAX_CHARS];
+        int idxLinea = 0;
+        int idxArtista = 0;
+        int dentroComillas = 0;
 
-        if (posicion_byte < 0) {
+        if (posicionByte < 0) {
             break;
         }
 
-        if (!fgets(linea, sizeof(linea), archivo)) {
+        if (!fgets(bufferLineaCSV, sizeof(bufferLineaCSV), ptrArchivoDataset)) {
             break;
         }
 
         // Procesar solo hasta la primera coma (fuera de comillas)
-        while (linea[i] != '\0' && linea[i] != '\n') {
-            if (linea[i] == '"') {
-                en_comillas = !en_comillas;
+        while (bufferLineaCSV[idxLinea] != '\0' && bufferLineaCSV[idxLinea] != '\n') {
+            if (bufferLineaCSV[idxLinea] == '"') {
+                dentroComillas = !dentroComillas;
             } 
-            else if (linea[i] == ',' && !en_comillas) {
+            else if (bufferLineaCSV[idxLinea] == ',' && !dentroComillas) {
                 break; 
             } 
-            else if (j < MAX_CHARS - 1) {
-                artista[j++] = linea[i];
+            else if (idxArtista < MAX_CHARS - 1) {
+                bufferArtista[idxArtista++] = bufferLineaCSV[idxLinea];
             }
-            i++;
+            idxLinea++;
         }
-        artista[j] = '\0'; // Cierre de la cadena
+        bufferArtista[idxArtista] = '\0'; // Cierre de la cadena
 
-        if (!insertar_en_tabla_hash(tabla_artistas, artista, posicion_byte)) {
+        if (!insertar_en_tabla_hash(ptrTablaHashArtistas, bufferArtista, posicionByte)) {
             break;
         }
-
-        fila_actual++;
     }
 
-    shmid = shmget(SHM_KEY, SHM_TAM, IPC_CREAT | 0666);
-    if (shmid < 0) {
+    idMemoriaVieja = shmget(SHM_KEY, 1, 0666);
+    if (idMemoriaVieja >= 0) {
+        shmctl(idMemoriaVieja, IPC_RMID, NULL);
+    }
+
+    idMemoriaCompartida = shmget(SHM_KEY, sizeof(RespuestaCanal), IPC_CREAT | 0666);
+    if (idMemoriaCompartida < 0) {
         printf("Error: No se pudo crear/abrir memoria compartida.\n");
-        fclose(archivo);
-        liberar_tabla_hash(tabla_artistas);
+        fclose(ptrArchivoDataset);
+        liberar_tabla_hash(ptrTablaHashArtistas);
         return 1;
     }
 
-    memoria = (char *) shmat(shmid, NULL, 0);
-    if (memoria == (void *) -1) {
+    ptrCanalRespuesta = (RespuestaCanal *) shmat(idMemoriaCompartida, NULL, 0);
+    if (ptrCanalRespuesta == (void *) -1) {
         printf("Error: No se pudo mapear memoria compartida.\n");
-        fclose(archivo);
-        liberar_tabla_hash(tabla_artistas);
+        fclose(ptrArchivoDataset);
+        liberar_tabla_hash(ptrTablaHashArtistas);
         return 1;
     }
 
-    estado = (int *) (void *) (memoria + OFFSET_ESTADO);
-    total_compartido = (int *) (void *) (memoria + OFFSET_TOTAL);
-    artista_compartido = memoria + OFFSET_ARTISTA;
-    respuesta_compartida = memoria + OFFSET_RESPUESTA;
-
-    *estado = ESTADO_LIBRE;
-    *total_compartido = 0;
-    artista_compartido[0] = '\0';
-    respuesta_compartida[0] = '\0';
+    ptrCanalRespuesta->estado = ESTADO_LIBRE;
+    ptrCanalRespuesta->totalResultados = 0;
+    ptrCanalRespuesta->nombreArtista[0] = '\0';
+    ptrCanalRespuesta->textoRespuesta[0] = '\0';
 
     printf("Servidor listo. Esperando consultas por memoria compartida...\n");
-    printf("Clave SHM: 0x%x\n", SHM_KEY);
 
     while (1) {
-        if (*estado == ESTADO_PETICION) {
-            int total = escribir_coincidencias_hash(tabla_artistas, artista_compartido,
-                                                    respuesta_compartida,
-                                                    RESPUESTA_TAM);
+        if (ptrCanalRespuesta->estado == ESTADO_PETICION) {
+            unsigned int indice;
+            NodoHash *actual;
+            size_t usados = 0;
+            int total = 0;
 
-            *total_compartido = total;
-            if (total == 0) {
-                snprintf(respuesta_compartida, RESPUESTA_TAM,
-                         "No se encontraron coincidencias para '%s'.",
-                         artista_compartido);
+            ptrCanalRespuesta->textoRespuesta[0] = '\0';
+            append_texto(ptrCanalRespuesta->textoRespuesta,
+                         TAMANO_BUFFER_RESPUESTA,
+                         &usados,
+                         "=== RESULTADOS DE BUSQUEDA ===\n");
+            append_texto(ptrCanalRespuesta->textoRespuesta,
+                         TAMANO_BUFFER_RESPUESTA,
+                         &usados,
+                         "Artista solicitado: ");
+            append_texto(ptrCanalRespuesta->textoRespuesta,
+                         TAMANO_BUFFER_RESPUESTA,
+                         &usados,
+                         ptrCanalRespuesta->nombreArtista);
+            append_texto(ptrCanalRespuesta->textoRespuesta,
+                         TAMANO_BUFFER_RESPUESTA,
+                         &usados,
+                         "\n\n");
+
+            indice = obtener_indice_hash(ptrCanalRespuesta->nombreArtista,
+                                         ptrTablaHashArtistas->capacidad);
+            actual = ptrTablaHashArtistas->cubetas[indice];
+
+            while (actual != NULL) {
+                if (strcmp(actual->clave, ptrCanalRespuesta->nombreArtista) == 0) {
+                    char lineaCsv[15000];
+                    size_t usadosLinea = 0;
+                    char c;
+
+                    append_texto(ptrCanalRespuesta->textoRespuesta,
+                                 TAMANO_BUFFER_RESPUESTA,
+                                 &usados,
+                                 "---- Coincidencia ");
+                    append_entero(ptrCanalRespuesta->textoRespuesta,
+                                  TAMANO_BUFFER_RESPUESTA,
+                                  &usados,
+                                  total + 1);
+                    append_texto(ptrCanalRespuesta->textoRespuesta,
+                                 TAMANO_BUFFER_RESPUESTA,
+                                 &usados,
+                                 " ----\nPosicion byte: ");
+                    append_entero_ll(ptrCanalRespuesta->textoRespuesta,
+                                     TAMANO_BUFFER_RESPUESTA,
+                                     &usados,
+                                     actual->posicion);
+                    append_texto(ptrCanalRespuesta->textoRespuesta,
+                                 TAMANO_BUFFER_RESPUESTA,
+                                 &usados,
+                                 "\n");
+
+                    lineaCsv[0] = '\0';
+                    if (fseek(ptrArchivoDataset, actual->posicion, SEEK_SET) == 0) {
+                        while (fread(&c, 1, 1, ptrArchivoDataset) == 1) {
+                            if (c == '\r') {
+                                continue;
+                            }
+                            if (c == '\n') {
+                                break;
+                            }
+                            if ((usadosLinea + 1) < sizeof(lineaCsv)) {
+                                lineaCsv[usadosLinea] = c;
+                                usadosLinea++;
+                            }
+                        }
+                        lineaCsv[usadosLinea] = '\0';
+
+                        append_texto(ptrCanalRespuesta->textoRespuesta,
+                                     TAMANO_BUFFER_RESPUESTA,
+                                     &usados,
+                                     "____________________________\n");
+                        append_texto(ptrCanalRespuesta->textoRespuesta,
+                                     TAMANO_BUFFER_RESPUESTA,
+                                     &usados,
+                                     lineaCsv);
+                        append_texto(ptrCanalRespuesta->textoRespuesta,
+                                     TAMANO_BUFFER_RESPUESTA,
+                                     &usados,
+                                     "\n____________________________\n\n");
+                    }
+                    else {
+                        append_texto(ptrCanalRespuesta->textoRespuesta,
+                                     TAMANO_BUFFER_RESPUESTA,
+                                     &usados,
+                                     "ERROR: no se pudo leer la fila en el CSV\n\n");
+                    }
+
+                    total++;
+                    if ((usados + 1) >= TAMANO_BUFFER_RESPUESTA) {
+                        break;
+                    }
+                }
+                actual = actual->siguiente;
             }
 
-            *estado = ESTADO_RESPUESTA;
+            ptrCanalRespuesta->totalResultados = total;
+            if (total == 0) {
+                size_t usadosMensaje = 0;
+                ptrCanalRespuesta->textoRespuesta[0] = '\0';
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usadosMensaje,
+                             "No se encontraron coincidencias para '");
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usadosMensaje,
+                             ptrCanalRespuesta->nombreArtista);
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usadosMensaje,
+                             "'.");
+            }
+
+            ptrCanalRespuesta->estado = ESTADO_RESPUESTA;
         }
-        else if (*estado == ESTADO_SALIR) {
+        else if (ptrCanalRespuesta->estado == ESTADO_SALIR) {
             break;
         }
 
@@ -145,10 +311,10 @@ int main(void) {
 
 
     // 4. Limpieza
-    fclose(archivo);
-    shmdt(memoria);
-    shmctl(shmid, IPC_RMID, NULL);
-    liberar_tabla_hash(tabla_artistas);
+    fclose(ptrArchivoDataset);
+    shmdt(ptrCanalRespuesta);
+    shmctl(idMemoriaCompartida, IPC_RMID, NULL);
+    liberar_tabla_hash(ptrTablaHashArtistas);
 
 
 
