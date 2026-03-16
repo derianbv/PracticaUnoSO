@@ -17,11 +17,15 @@
 #define ESTADO_SALIR 3
 
 #define TAMANO_BUFFER_RESPUESTA 262144
+#define MAX_COINCIDENCIAS_MOSTRADAS 100
+#define RESERVA_RESUMEN 512
+#define MARGEN_MINIMO_POR_FILA 16000
 
 typedef struct RespuestaCanal {
     int estado;
+    int tipoBusqueda;
     int totalResultados;
-    char nombreArtista[MAX_CHARS];
+    char terminoBusqueda[MAX_CHARS];
     char textoRespuesta[TAMANO_BUFFER_RESPUESTA];
 } RespuestaCanal;
 
@@ -88,6 +92,45 @@ static void append_entero(char *destino, size_t capacidad, size_t *usados,
                           int valor)
 {
     append_entero_ll(destino, capacidad, usados, (long long) valor);
+}
+
+static void extraer_columna_csv(const char *linea, int indiceColumna,
+                                char *salida, size_t tamSalida)
+{
+    int columnaActual = 0;
+    int dentroComillas = 0;
+    size_t i = 0;
+    size_t usadosSalida = 0;
+
+    if (salida == NULL || tamSalida == 0) {
+        return;
+    }
+
+    salida[0] = '\0';
+
+    while (linea[i] != '\0' && linea[i] != '\n') {
+        char c = linea[i];
+
+        if (c == '"') {
+            dentroComillas = !dentroComillas;
+            i++;
+            continue;
+        }
+
+        if (c == ',' && !dentroComillas) {
+            columnaActual++;
+            i++;
+            continue;
+        }
+
+        if (columnaActual == indiceColumna && (usadosSalida + 1) < tamSalida) {
+            salida[usadosSalida] = c;
+            usadosSalida++;
+            salida[usadosSalida] = '\0';
+        }
+
+        i++;
+    }
 }
 
 int main(void) {
@@ -176,8 +219,9 @@ int main(void) {
     }
 
     ptrCanalRespuesta->estado = ESTADO_LIBRE;
+    ptrCanalRespuesta->tipoBusqueda = 0;
     ptrCanalRespuesta->totalResultados = 0;
-    ptrCanalRespuesta->nombreArtista[0] = '\0';
+    ptrCanalRespuesta->terminoBusqueda[0] = '\0';
     ptrCanalRespuesta->textoRespuesta[0] = '\0';
 
     printf("Servidor listo. Esperando consultas por memoria compartida...\n");
@@ -188,101 +232,222 @@ int main(void) {
             NodoHash *actual;
             size_t usados = 0;
             int total = 0;
+            int mostrados = 0;
+            int tipoBusqueda = ptrCanalRespuesta->tipoBusqueda;
+            int bufferLleno = 0;
 
             ptrCanalRespuesta->textoRespuesta[0] = '\0';
             append_texto(ptrCanalRespuesta->textoRespuesta,
                          TAMANO_BUFFER_RESPUESTA,
                          &usados,
                          "=== RESULTADOS DE BUSQUEDA ===\n");
-            append_texto(ptrCanalRespuesta->textoRespuesta,
-                         TAMANO_BUFFER_RESPUESTA,
-                         &usados,
-                         "Artista solicitado: ");
-            append_texto(ptrCanalRespuesta->textoRespuesta,
-                         TAMANO_BUFFER_RESPUESTA,
-                         &usados,
-                         ptrCanalRespuesta->nombreArtista);
-            append_texto(ptrCanalRespuesta->textoRespuesta,
-                         TAMANO_BUFFER_RESPUESTA,
-                         &usados,
-                         "\n\n");
+            if (tipoBusqueda == 1) {
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usados,
+                             "Artista solicitado: ");
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usados,
+                             ptrCanalRespuesta->terminoBusqueda);
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usados,
+                             "\n\n");
 
-            indice = obtener_indice_hash(ptrCanalRespuesta->nombreArtista,
-                                         ptrTablaHashArtistas->capacidad);
-            actual = ptrTablaHashArtistas->cubetas[indice];
+                indice = obtener_indice_hash(ptrCanalRespuesta->terminoBusqueda,
+                                             ptrTablaHashArtistas->capacidad);
+                actual = ptrTablaHashArtistas->cubetas[indice];
 
-            while (actual != NULL) {
-                if (strcmp(actual->clave, ptrCanalRespuesta->nombreArtista) == 0) {
-                    char lineaCsv[15000];
-                    size_t usadosLinea = 0;
-                    char c;
+                while (actual != NULL) {
+                    if (strcmp(actual->clave, ptrCanalRespuesta->terminoBusqueda) == 0) {
+                        char lineaCsv[15000];
+                        size_t usadosLinea = 0;
+                        char c;
 
-                    append_texto(ptrCanalRespuesta->textoRespuesta,
-                                 TAMANO_BUFFER_RESPUESTA,
-                                 &usados,
-                                 "---- Coincidencia ");
-                    append_entero(ptrCanalRespuesta->textoRespuesta,
-                                  TAMANO_BUFFER_RESPUESTA,
-                                  &usados,
-                                  total + 1);
-                    append_texto(ptrCanalRespuesta->textoRespuesta,
-                                 TAMANO_BUFFER_RESPUESTA,
-                                 &usados,
-                                 " ----\nPosicion byte: ");
-                    append_entero_ll(ptrCanalRespuesta->textoRespuesta,
+                        total++;
+
+                        if (bufferLleno ||
+                            mostrados >= MAX_COINCIDENCIAS_MOSTRADAS ||
+                            (usados + MARGEN_MINIMO_POR_FILA) >=
+                                (TAMANO_BUFFER_RESPUESTA - RESERVA_RESUMEN)) {
+                            bufferLleno = 1;
+                            actual = actual->siguiente;
+                            continue;
+                        }
+
+                        append_texto(ptrCanalRespuesta->textoRespuesta,
                                      TAMANO_BUFFER_RESPUESTA,
                                      &usados,
-                                     actual->posicion);
-                    append_texto(ptrCanalRespuesta->textoRespuesta,
-                                 TAMANO_BUFFER_RESPUESTA,
-                                 &usados,
-                                 "\n");
+                                     "---- Coincidencia ");
+                        append_entero(ptrCanalRespuesta->textoRespuesta,
+                                      TAMANO_BUFFER_RESPUESTA,
+                                      &usados,
+                                      mostrados + 1);
+                        append_texto(ptrCanalRespuesta->textoRespuesta,
+                                     TAMANO_BUFFER_RESPUESTA,
+                                     &usados,
+                                     " ----\nPosicion byte: ");
+                        append_entero_ll(ptrCanalRespuesta->textoRespuesta,
+                                         TAMANO_BUFFER_RESPUESTA,
+                                         &usados,
+                                         actual->posicion);
+                        append_texto(ptrCanalRespuesta->textoRespuesta,
+                                     TAMANO_BUFFER_RESPUESTA,
+                                     &usados,
+                                     "\n");
 
-                    lineaCsv[0] = '\0';
-                    if (fseek(ptrArchivoDataset, actual->posicion, SEEK_SET) == 0) {
-                        while (fread(&c, 1, 1, ptrArchivoDataset) == 1) {
-                            if (c == '\r') {
-                                continue;
+                        lineaCsv[0] = '\0';
+                        if (fseek(ptrArchivoDataset, actual->posicion, SEEK_SET) == 0) {
+                            while (fread(&c, 1, 1, ptrArchivoDataset) == 1) {
+                                if (c == '\r') {
+                                    continue;
+                                }
+                                if (c == '\n') {
+                                    break;
+                                }
+                                if ((usadosLinea + 1) < sizeof(lineaCsv)) {
+                                    lineaCsv[usadosLinea] = c;
+                                    usadosLinea++;
+                                }
                             }
-                            if (c == '\n') {
-                                break;
-                            }
-                            if ((usadosLinea + 1) < sizeof(lineaCsv)) {
-                                lineaCsv[usadosLinea] = c;
-                                usadosLinea++;
+                            lineaCsv[usadosLinea] = '\0';
+
+                            append_texto(ptrCanalRespuesta->textoRespuesta,
+                                         TAMANO_BUFFER_RESPUESTA,
+                                         &usados,
+                                         "____________________________\n");
+                            append_texto(ptrCanalRespuesta->textoRespuesta,
+                                         TAMANO_BUFFER_RESPUESTA,
+                                         &usados,
+                                         lineaCsv);
+                            append_texto(ptrCanalRespuesta->textoRespuesta,
+                                         TAMANO_BUFFER_RESPUESTA,
+                                         &usados,
+                                         "\n____________________________\n\n");
+                        }
+                        else {
+                            append_texto(ptrCanalRespuesta->textoRespuesta,
+                                         TAMANO_BUFFER_RESPUESTA,
+                                         &usados,
+                                         "ERROR: no se pudo leer la fila en el CSV\n\n");
+                        }
+
+                        mostrados++;
+                    }
+                    actual = actual->siguiente;
+                }
+            }
+            else if (tipoBusqueda == 2) {
+                char lineaCsv[15000];
+                char emocion[256];
+
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usados,
+                             "Emocion solicitada: ");
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usados,
+                             ptrCanalRespuesta->terminoBusqueda);
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usados,
+                             "\n\n");
+
+                if (fseek(ptrArchivoDataset, 0, SEEK_SET) == 0) {
+                    if (fgets(lineaCsv, sizeof(lineaCsv), ptrArchivoDataset) != NULL) {
+                        while (fgets(lineaCsv, sizeof(lineaCsv), ptrArchivoDataset) != NULL) {
+                            long long posicion = ftell(ptrArchivoDataset) - (long long) strlen(lineaCsv);
+
+                            extraer_columna_csv(lineaCsv, 4, emocion, sizeof(emocion));
+                            if (strcmp(emocion, ptrCanalRespuesta->terminoBusqueda) == 0) {
+                                total++;
+
+                                if (bufferLleno ||
+                                    mostrados >= MAX_COINCIDENCIAS_MOSTRADAS ||
+                                    (usados + MARGEN_MINIMO_POR_FILA) >=
+                                        (TAMANO_BUFFER_RESPUESTA - RESERVA_RESUMEN)) {
+                                    bufferLleno = 1;
+                                    continue;
+                                }
+
+                                append_texto(ptrCanalRespuesta->textoRespuesta,
+                                             TAMANO_BUFFER_RESPUESTA,
+                                             &usados,
+                                             "---- Coincidencia ");
+                                append_entero(ptrCanalRespuesta->textoRespuesta,
+                                              TAMANO_BUFFER_RESPUESTA,
+                                              &usados,
+                                              mostrados + 1);
+                                append_texto(ptrCanalRespuesta->textoRespuesta,
+                                             TAMANO_BUFFER_RESPUESTA,
+                                             &usados,
+                                             " ----\nPosicion byte: ");
+                                append_entero_ll(ptrCanalRespuesta->textoRespuesta,
+                                                 TAMANO_BUFFER_RESPUESTA,
+                                                 &usados,
+                                                 posicion);
+                                append_texto(ptrCanalRespuesta->textoRespuesta,
+                                             TAMANO_BUFFER_RESPUESTA,
+                                             &usados,
+                                             "\n");
+                                append_texto(ptrCanalRespuesta->textoRespuesta,
+                                             TAMANO_BUFFER_RESPUESTA,
+                                             &usados,
+                                             "____________________________\n");
+                                append_texto(ptrCanalRespuesta->textoRespuesta,
+                                             TAMANO_BUFFER_RESPUESTA,
+                                             &usados,
+                                             lineaCsv);
+                                if (lineaCsv[0] != '\0' &&
+                                    lineaCsv[strlen(lineaCsv) - 1] != '\n') {
+                                    append_texto(ptrCanalRespuesta->textoRespuesta,
+                                                 TAMANO_BUFFER_RESPUESTA,
+                                                 &usados,
+                                                 "\n");
+                                }
+                                append_texto(ptrCanalRespuesta->textoRespuesta,
+                                             TAMANO_BUFFER_RESPUESTA,
+                                             &usados,
+                                             "____________________________\n\n");
+                                mostrados++;
                             }
                         }
-                        lineaCsv[usadosLinea] = '\0';
-
-                        append_texto(ptrCanalRespuesta->textoRespuesta,
-                                     TAMANO_BUFFER_RESPUESTA,
-                                     &usados,
-                                     "____________________________\n");
-                        append_texto(ptrCanalRespuesta->textoRespuesta,
-                                     TAMANO_BUFFER_RESPUESTA,
-                                     &usados,
-                                     lineaCsv);
-                        append_texto(ptrCanalRespuesta->textoRespuesta,
-                                     TAMANO_BUFFER_RESPUESTA,
-                                     &usados,
-                                     "\n____________________________\n\n");
-                    }
-                    else {
-                        append_texto(ptrCanalRespuesta->textoRespuesta,
-                                     TAMANO_BUFFER_RESPUESTA,
-                                     &usados,
-                                     "ERROR: no se pudo leer la fila en el CSV\n\n");
-                    }
-
-                    total++;
-                    if ((usados + 1) >= TAMANO_BUFFER_RESPUESTA) {
-                        break;
                     }
                 }
-                actual = actual->siguiente;
+            }
+            else {
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usados,
+                             "Tipo de busqueda invalido.\n");
             }
 
             ptrCanalRespuesta->totalResultados = total;
+            if (total > mostrados) {
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usados,
+                             "\n[Salida parcial por limite de buffer]\nMostrados: ");
+                append_entero(ptrCanalRespuesta->textoRespuesta,
+                              TAMANO_BUFFER_RESPUESTA,
+                              &usados,
+                              mostrados);
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usados,
+                             " | Total real: ");
+                append_entero(ptrCanalRespuesta->textoRespuesta,
+                              TAMANO_BUFFER_RESPUESTA,
+                              &usados,
+                              total);
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usados,
+                             "\n");
+            }
+
             if (total == 0) {
                 size_t usadosMensaje = 0;
                 ptrCanalRespuesta->textoRespuesta[0] = '\0';
@@ -293,7 +458,7 @@ int main(void) {
                 append_texto(ptrCanalRespuesta->textoRespuesta,
                              TAMANO_BUFFER_RESPUESTA,
                              &usadosMensaje,
-                             ptrCanalRespuesta->nombreArtista);
+                             ptrCanalRespuesta->terminoBusqueda);
                 append_texto(ptrCanalRespuesta->textoRespuesta,
                              TAMANO_BUFFER_RESPUESTA,
                              &usadosMensaje,

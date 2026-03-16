@@ -17,8 +17,9 @@
 
 typedef struct RespuestaCanal {
     int estado;
+    int tipoBusqueda;
     int totalResultados;
-    char nombreArtista[MAX_CHARS];
+    char terminoBusqueda[MAX_CHARS];
     char textoRespuesta[TAMANO_BUFFER_RESPUESTA];
 } RespuestaCanal;
 
@@ -52,11 +53,12 @@ int main(void)
     }
 
     while (1) {
-        char bufferArtistaBuscado[MAX_CHARS];
+        char bufferBusqueda[MAX_CHARS];
 
         printf("\n=== MENU CONSULTAS ARTISTA ===\n");
-        printf("1. Buscar artista\n");
-        printf("2. Salir\n");
+        printf("1. Buscar por parametro 1 (Nombre de artista)\n");
+        printf("2. Emocion (en ingles)\n");
+        printf("3. Salir\n");
         printf("Opcion: ");
 
         if (scanf("%d", &opcionMenu) != 1) {
@@ -73,23 +75,30 @@ int main(void)
             }
         }
 
-        if (opcionMenu == 1) {
+        if (opcionMenu == 1 || opcionMenu == 2) {
             if (ptrCanalRespuesta->estado != ESTADO_LIBRE) {
                 printf("Servidor ocupado, intenta de nuevo.\n");
                 continue;
             }
 
-            printf("Ingresa nombre del artista: ");
-            leer_linea(bufferArtistaBuscado, sizeof(bufferArtistaBuscado));
+            if (opcionMenu == 1) {
+                printf("Ingresa nombre del artista: ");
+            }
+            else {
+                printf("Ingresa emocion (en ingles): ");
+            }
 
-            if (bufferArtistaBuscado[0] == '\0') {
+            leer_linea(bufferBusqueda, sizeof(bufferBusqueda));
+
+            if (bufferBusqueda[0] == '\0') {
                 printf("Nombre vacio.\n");
                 continue;
             }
 
-            strncpy(ptrCanalRespuesta->nombreArtista, bufferArtistaBuscado,
+            ptrCanalRespuesta->tipoBusqueda = opcionMenu;
+            strncpy(ptrCanalRespuesta->terminoBusqueda, bufferBusqueda,
                     MAX_CHARS - 1);
-            ptrCanalRespuesta->nombreArtista[MAX_CHARS - 1] = '\0';
+            ptrCanalRespuesta->terminoBusqueda[MAX_CHARS - 1] = '\0';
             ptrCanalRespuesta->estado = ESTADO_PETICION;
 
             while (ptrCanalRespuesta->estado != ESTADO_RESPUESTA) {
@@ -101,7 +110,7 @@ int main(void)
 
             ptrCanalRespuesta->estado = ESTADO_LIBRE;
         }
-        else if (opcionMenu == 2) {
+        else if (opcionMenu == 3) {
             ptrCanalRespuesta->estado = ESTADO_SALIR;
             break;
         }
