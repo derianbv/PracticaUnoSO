@@ -4,7 +4,7 @@ CFLAGS = -O2 -Wall -Wextra
 SERVER = p1-dataProgram
 GUI_BIN = p1-gui
 
-SERVER_SRC = p1-dataProgram.c hash_util.c
+SERVER_SRC = p1-dataProgram.c
 GUI_SRC = p1-gui.c
 
 .PHONY: all server gui run clean stop demo
