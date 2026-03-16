@@ -55,9 +55,9 @@ int main(void)
     while (1) {
         char bufferBusqueda[MAX_CHARS];
 
-        printf("\n=== MENU CONSULTAS ARTISTA ===\n");
-        printf("1. Buscar por parametro 1 (Nombre de artista)\n");
-        printf("2. Emocion (en ingles)\n");
+        printf("\n=== MENU ===\n");
+        printf("1. Buscar artista\n");
+        printf("2. Buscar genero\n");
         printf("3. Salir\n");
         printf("Opcion: ");
 
@@ -85,7 +85,7 @@ int main(void)
                 printf("Ingresa nombre del artista: ");
             }
             else {
-                printf("Ingresa emocion (en ingles): ");
+                printf("Ingresa genero musical: ");
             }
 
             leer_linea(bufferBusqueda, sizeof(bufferBusqueda));
@@ -95,7 +95,7 @@ int main(void)
                 continue;
             }
 
-            ptrCanalRespuesta->tipoBusqueda = opcionMenu;
+                ptrCanalRespuesta->tipoBusqueda = opcionMenu;
             strncpy(ptrCanalRespuesta->terminoBusqueda, bufferBusqueda,
                     MAX_CHARS - 1);
             ptrCanalRespuesta->terminoBusqueda[MAX_CHARS - 1] = '\0';
@@ -106,7 +106,6 @@ int main(void)
             }
 
             printf("\n%s\n", ptrCanalRespuesta->textoRespuesta);
-            printf("Total coincidencias: %d\n", ptrCanalRespuesta->totalResultados);
 
             ptrCanalRespuesta->estado = ESTADO_LIBRE;
         }

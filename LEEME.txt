@@ -1,0 +1,135 @@
+PRACTICA 1 - SISTEMAS OPERATIVOS
+================================
+
+Integrantes
+-----------
+Adriana Lucia Gonzalez - adrgonzalezmo@unal.edu.co
+Derian Santiago Rojas - derojasl@unal.edu.co 
+Joel Santiago Neuta Jaspe - jneutaj@unal.edu.co 
+
+
+1. Descripcion general
+----------------------
+Este proyecto implementa un sistema de busqueda interactivo sobre un dataset CSV
+de canciones de Spotify. La arquitectura usa dos procesos no emparentados:
+
+- Servidor: construye indices hash en memoria y atiende peticiones.
+- Interfaz: solicita criterios al usuario y muestra resultados.
+
+La comunicacion entre procesos se realiza con memoria compartida SysV
+(shmget, shmat, shmdt, shmctl).
+
+
+2. Dataset y campos usados
+--------------------------
+Archivo principal:
+- spotify_dataset.csv
+
+Campos usados para busqueda:
+- Criterio 1 (principal): artista (columna 0 del CSV)
+- Criterio 2 (secundario): genero musical (columna 5 del CSV)
+
+
+3. Estructura de datos e indexacion
+-----------------------------------
+Se implementan dos tablas hash en memoria:
+
+- hash_artistas: clave = nombre de artista
+- hash_generos: clave = genero
+
+Cada nodo de hash guarda:
+- clave (string)
+- posicion byte del registro en el CSV (offset)
+- puntero al siguiente nodo (encadenamiento para colisiones)
+
+La busqueda se hace en dos pasos:
+1. Resolver coincidencias en la tabla hash por la clave consultada.
+2. Ir al archivo CSV con fseek/fread usando la posicion almacenada.
+
+Esto evita cargar todo el dataset en memoria.
+
+
+4. Comunicacion entre procesos
+------------------------------
+Se usa un segmento de memoria compartida con la estructura:
+
+- estado: libre, peticion, respuesta, salir
+- tipoBusqueda: 1 artista, 2 genero
+- terminoBusqueda: texto ingresado por el usuario
+- textoRespuesta: bloque de texto con resultados
+- totalResultados: total de coincidencias encontradas
+
+Flujo:
+1. Interfaz escribe tipo + termino y cambia estado a PETICION.
+2. Servidor procesa y cambia estado a RESPUESTA.
+3. Interfaz imprime respuesta y devuelve estado a LIBRE.
+
+
+5. Criterios, validaciones y salida
+-----------------------------------
+Menu de interfaz:
+1) Buscar artista
+2) Buscar genero
+3) Salir
+
+Reglas de salida:
+- Si no hay coincidencias: se responde exactamente "NA".
+- Si hay demasiadas coincidencias para mostrar: se limita visualizacion y se
+	agrega resumen "Mostrados: X | Total: Y".
+
+
+6. Consideraciones tecnicas de la practica
+------------------------------------------
+- Uso de memoria dinamica: malloc/free en la tabla hash.
+- Busqueda con hash: implementada para los dos criterios.
+- Procesos separados con IPC: implementado.
+- Datos en disco con acceso por offset: implementado con fseek/fread.
+
+
+7. Compilacion y ejecucion
+--------------------------
+Opcion 1: con Makefile (recomendado)
+
+- Compilar:
+	make
+
+- Ejecutar servidor (terminal 1):
+	make server
+
+- Ejecutar interfaz (terminal 2):
+	make gui
+
+- Limpiar binarios:
+	make clean
+
+
+Opcion 2: manual
+
+- Servidor:
+	gcc hash_util.c p1-dataProgram.c -o p1-dataProgram
+
+- Interfaz:
+	gcc p1-gui.c -o gui
+
+
+8. Ejemplos de uso
+------------------
+Ejemplo artista:
+- Opcion: 1
+- Entrada: Cage The Elephant
+
+Ejemplo genero:
+- Opcion: 2
+- Entrada: hip hop
+
+Ejemplo sin resultados:
+- Opcion: 2
+- Entrada: GENERO_NO_EXISTE_123
+- Salida esperada: NA
+
+
+9. Observaciones
+----------------
+- El servidor indexa el CSV al iniciar.
+- La interfaz debe ejecutarse despues de que el servidor este listo.
+- Al salir desde la interfaz (opcion 3), se envia estado de cierre al servidor.
