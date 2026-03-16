@@ -81,6 +81,24 @@ int main(void)
                 continue;
             }
 
+            ptrCanalRespuesta->tipoBusqueda = opcionMenu;
+            ptrCanalRespuesta->terminoBusqueda[0] = '\0';
+            ptrCanalRespuesta->estado = ESTADO_PETICION;
+
+            while (ptrCanalRespuesta->estado != ESTADO_RESPUESTA) {
+                sleep(1);
+            }
+
+            if (strncmp(ptrCanalRespuesta->textoRespuesta,
+                        "Error",
+                        strlen("Error")) == 0) {
+                printf("%s\n", ptrCanalRespuesta->textoRespuesta);
+                ptrCanalRespuesta->estado = ESTADO_LIBRE;
+                continue;
+            }
+
+            ptrCanalRespuesta->estado = ESTADO_LIBRE;
+
             if (opcionMenu == 1) {
                 printf("Ingresa nombre del artista: ");
             }
@@ -95,7 +113,12 @@ int main(void)
                 continue;
             }
 
-                ptrCanalRespuesta->tipoBusqueda = opcionMenu;
+            if (ptrCanalRespuesta->estado != ESTADO_LIBRE) {
+                printf("Servidor ocupado, intenta de nuevo.\n");
+                continue;
+            }
+
+            ptrCanalRespuesta->tipoBusqueda = opcionMenu;
             strncpy(ptrCanalRespuesta->terminoBusqueda, bufferBusqueda,
                     MAX_CHARS - 1);
             ptrCanalRespuesta->terminoBusqueda[MAX_CHARS - 1] = '\0';

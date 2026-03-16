@@ -5,7 +5,7 @@
 #include <sys/shm.h>
 #include <unistd.h>
 
-#include "hash_util.h"
+#include "hash_util.c"
 
 #define MAX_CHARS 256
 #define SHM_KEY 0x44504131
@@ -18,6 +18,7 @@
 
 #define TAMANO_BUFFER_RESPUESTA 262144
 #define MAX_COINCIDENCIAS_MOSTRADAS 100
+#define CAPACIDAD_TABLA_HASH 150001
 
 typedef struct RespuestaCanal {
     int estado;
@@ -145,44 +146,59 @@ static void insertar_generos_en_hash(TablaHash *tabla,
     }
 }
 
-int main(void) {
-    // 1. Estructura de indice en hash
-    TablaHash *ptrTablaHashArtistas = crear_tabla_hash(10007);
-    TablaHash *ptrTablaHashGeneros = crear_tabla_hash(10007);
-    int idMemoriaCompartida;
-    int idMemoriaVieja;
-    RespuestaCanal *ptrCanalRespuesta;
+static size_t calcular_memoria_tabla_hash(const TablaHash *tabla)
+{
+    size_t total = 0;
+    unsigned int i;
 
-    if (ptrTablaHashArtistas == NULL || ptrTablaHashGeneros == NULL) {
-        printf("Error: No se pudo crear la tabla hash.\n");
-        liberar_tabla_hash(ptrTablaHashArtistas);
-        liberar_tabla_hash(ptrTablaHashGeneros);
-        return 1;
+    if (tabla == NULL) {
+        return 0;
     }
 
-    FILE *ptrArchivoDataset = fopen("spotify_dataset.csv", "rb");
-    if (!ptrArchivoDataset) {
-        printf("Error: No se encontró el archivo spotify_dataset.csv\n");
-        liberar_tabla_hash(ptrTablaHashArtistas);
-        liberar_tabla_hash(ptrTablaHashGeneros);
-        return 1;
+    total += sizeof(TablaHash);
+    total += (size_t) tabla->capacidad * sizeof(NodoHash *);
+
+    for (i = 0; i < tabla->capacidad; i++) {
+        const NodoHash *actual = tabla->cubetas[i];
+
+        while (actual != NULL) {
+            total += sizeof(NodoHash);
+            total += strlen(actual->key) + 1;
+            total += actual->capacidad_posiciones * sizeof(long long);
+            actual = actual->siguiente;
+        }
     }
 
-    char bufferLineaCSV[15000]; // Buffer extra grande para las letras de canciones
-    // Saltar la línea de cabecera
+    return total;
+}
+
+static TablaHash *construir_indice_desde_csv(FILE *ptrArchivoDataset,
+                                             int tipoBusqueda)
+{
+    TablaHash *tabla;
+    char bufferLineaCSV[15000];
+
+    if (ptrArchivoDataset == NULL) {
+        return NULL;
+    }
+
+    tabla = crear_tabla_hash(CAPACIDAD_TABLA_HASH);
+    if (tabla == NULL) {
+        return NULL;
+    }
+
+    if (fseek(ptrArchivoDataset, 0, SEEK_SET) != 0) {
+        liberar_tabla_hash(tabla);
+        return NULL;
+    }
+
     if (!fgets(bufferLineaCSV, sizeof(bufferLineaCSV), ptrArchivoDataset)) {
-        printf("Archivo vacío.\n");
-        fclose(ptrArchivoDataset);
-        liberar_tabla_hash(ptrTablaHashArtistas);
-        liberar_tabla_hash(ptrTablaHashGeneros);
-        return 1;
+        liberar_tabla_hash(tabla);
+        return NULL;
     }
 
-    // 2. Lectura y guardado
     while (1) {
         long long posicionByte = ftell(ptrArchivoDataset);
-        char bufferArtista[MAX_CHARS];
-        char bufferGeneros[1024];
 
         if (posicionByte < 0) {
             break;
@@ -192,16 +208,45 @@ int main(void) {
             break;
         }
 
-        extraer_columna_csv(bufferLineaCSV, 0, bufferArtista, sizeof(bufferArtista));
-        extraer_columna_csv(bufferLineaCSV, 5, bufferGeneros, sizeof(bufferGeneros));
-        recortar_espacios(bufferArtista);
+        if (tipoBusqueda == 1) {
+            char bufferArtista[MAX_CHARS];
 
-        if (bufferArtista[0] != '\0' &&
-            !insertar_en_tabla_hash(ptrTablaHashArtistas, bufferArtista, posicionByte)) {
-            break;
+            extraer_columna_csv(bufferLineaCSV, 0, bufferArtista,
+                                sizeof(bufferArtista));
+            recortar_espacios(bufferArtista);
+
+            if (bufferArtista[0] != '\0' &&
+                !insertar_en_tabla_hash(tabla, bufferArtista, posicionByte)) {
+                liberar_tabla_hash(tabla);
+                return NULL;
+            }
         }
+        else if (tipoBusqueda == 2) {
+            char bufferGeneros[1024];
 
-        insertar_generos_en_hash(ptrTablaHashGeneros, bufferGeneros, posicionByte);
+            extraer_columna_csv(bufferLineaCSV, 5, bufferGeneros,
+                                sizeof(bufferGeneros));
+            insertar_generos_en_hash(tabla, bufferGeneros, posicionByte);
+        }
+    }
+
+    return tabla;
+}
+
+int main(void) {
+    // 1. Estructura de indice en hash
+    TablaHash *ptrTablaHashArtistas = NULL;
+    TablaHash *ptrTablaHashGeneros = NULL;
+    int idMemoriaCompartida;
+    int idMemoriaVieja;
+    RespuestaCanal *ptrCanalRespuesta;
+
+    FILE *ptrArchivoDataset = fopen("spotify_dataset.csv", "rb");
+    if (!ptrArchivoDataset) {
+        printf("Error: No se encontró el archivo spotify_dataset.csv\n");
+        liberar_tabla_hash(ptrTablaHashArtistas);
+        liberar_tabla_hash(ptrTablaHashGeneros);
+        return 1;
     }
 
     idMemoriaVieja = shmget(SHM_KEY, 1, 0666);
@@ -256,10 +301,54 @@ int main(void) {
                          "");
 
             if (ptrCanalRespuesta->tipoBusqueda == 1) {
+                if (ptrTablaHashArtistas == NULL) {
+                    size_t memoriaArtistas;
+
+                    ptrTablaHashArtistas = construir_indice_desde_csv(ptrArchivoDataset, 1);
+                    if (ptrTablaHashArtistas == NULL) {
+                        ptrCanalRespuesta->textoRespuesta[0] = '\0';
+                        append_texto(ptrCanalRespuesta->textoRespuesta,
+                                     TAMANO_BUFFER_RESPUESTA,
+                                     &usados,
+                                     "Error construyendo indice de artistas");
+                        ptrCanalRespuesta->totalResultados = 0;
+                        ptrCanalRespuesta->estado = ESTADO_RESPUESTA;
+                        sleep(1);
+                        continue;
+                    }
+
+                    memoriaArtistas = calcular_memoria_tabla_hash(ptrTablaHashArtistas);
+
+                    printf("Memoria hash artistas: %zu bytes (%.2f MB)\n",
+                           memoriaArtistas,
+                           (double) memoriaArtistas / (1024.0 * 1024.0));
+                }
                 tablaBusqueda = ptrTablaHashArtistas;
                 etiquetaBusqueda = "Artista solicitado: ";
             }
             else if (ptrCanalRespuesta->tipoBusqueda == 2) {
+                if (ptrTablaHashGeneros == NULL) {
+                    size_t memoriaGeneros;
+
+                    ptrTablaHashGeneros = construir_indice_desde_csv(ptrArchivoDataset, 2);
+                    if (ptrTablaHashGeneros == NULL) {
+                        ptrCanalRespuesta->textoRespuesta[0] = '\0';
+                        append_texto(ptrCanalRespuesta->textoRespuesta,
+                                     TAMANO_BUFFER_RESPUESTA,
+                                     &usados,
+                                     "Error construyendo indice de generos");
+                        ptrCanalRespuesta->totalResultados = 0;
+                        ptrCanalRespuesta->estado = ESTADO_RESPUESTA;
+                        sleep(1);
+                        continue;
+                    }
+
+                    memoriaGeneros = calcular_memoria_tabla_hash(ptrTablaHashGeneros);
+
+                    printf("Memoria hash generos: %zu bytes (%.2f MB)\n",
+                           memoriaGeneros,
+                           (double) memoriaGeneros / (1024.0 * 1024.0));
+                }
                 tablaBusqueda = ptrTablaHashGeneros;
                 etiquetaBusqueda = "Genero solicitado: ";
             }
@@ -269,6 +358,18 @@ int main(void) {
                              TAMANO_BUFFER_RESPUESTA,
                              &usados,
                              "NA");
+                ptrCanalRespuesta->totalResultados = 0;
+                ptrCanalRespuesta->estado = ESTADO_RESPUESTA;
+                sleep(1);
+                continue;
+            }
+
+            if (ptrCanalRespuesta->terminoBusqueda[0] == '\0') {
+                ptrCanalRespuesta->textoRespuesta[0] = '\0';
+                append_texto(ptrCanalRespuesta->textoRespuesta,
+                             TAMANO_BUFFER_RESPUESTA,
+                             &usados,
+                             "INDICE_LISTO");
                 ptrCanalRespuesta->totalResultados = 0;
                 ptrCanalRespuesta->estado = ESTADO_RESPUESTA;
                 sleep(1);
@@ -288,12 +389,12 @@ int main(void) {
                          &usados,
                          "\n\n");
 
-            indice = obtener_indice_hash(ptrCanalRespuesta->terminoBusqueda,
-                                         tablaBusqueda->capacidad);
+            indice = hashARam(ptrCanalRespuesta->terminoBusqueda,
+                              tablaBusqueda->capacidad);
             actual = tablaBusqueda->cubetas[indice];
 
             while (actual != NULL) {
-                if (strcmp(actual->clave, ptrCanalRespuesta->terminoBusqueda) == 0) {
+                if (strcmp(actual->key, ptrCanalRespuesta->terminoBusqueda) == 0) {
                     size_t p;
                     total = (int) actual->cantidad_posiciones;
 
@@ -312,7 +413,7 @@ int main(void) {
                                      "---- Coincidencia ----\n");
 
                         lineaCsv[0] = '\0';
-                        if (fseek(ptrArchivoDataset, actual->posiciones[p], SEEK_SET) == 0) {
+                        if (fseek(ptrArchivoDataset, actual->posicionesBytes[p], SEEK_SET) == 0) {
                             while (fread(&c, 1, 1, ptrArchivoDataset) == 1) {
                                 if (c == '\r') {
                                     continue;

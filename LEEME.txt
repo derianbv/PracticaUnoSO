@@ -106,7 +106,7 @@ Opcion 1: con Makefile (recomendado)
 Opcion 2: manual
 
 - Servidor:
-	gcc hash_util.c p1-dataProgram.c -o p1-dataProgram
+	gcc p1-dataProgram.c -o p1-dataProgram
 
 - Interfaz:
 	gcc p1-gui.c -o gui
@@ -133,3 +133,4 @@ Ejemplo sin resultados:
 - El servidor indexa el CSV al iniciar.
 - La interfaz debe ejecutarse despues de que el servidor este listo.
 - Al salir desde la interfaz (opcion 3), se envia estado de cierre al servidor.
+- Se usó Gemini Pro para confirmar información teórica y Chat Gpt Codex 5.3 para escribir el código.
