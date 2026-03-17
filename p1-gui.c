@@ -30,7 +30,7 @@ static void leer_linea(char *buffer, size_t tamano)
         return;
     }
 
-    buffer[strcspn(buffer, "\n")] = '\0';
+    buffer[strcspn(buffer, "\n")] = '\0'; //quitar /n del enter del usuasrio 
 }
 
 int main(void)
@@ -52,7 +52,10 @@ int main(void)
         return 1;
     }
 
-    while (1) {
+    //Cajon conectado 
+
+
+    while (1) { //espera respuesta del usuario
         char bufferBusqueda[MAX_CHARS];
 
         printf("\n=== MENU ===\n");
@@ -87,7 +90,7 @@ int main(void)
 
             while (ptrCanalRespuesta->estado != ESTADO_RESPUESTA) {
                 sleep(1);
-            }
+            } //espera al server termine de procesar la consulta    
 
             if (strncmp(ptrCanalRespuesta->textoRespuesta,
                         "Error",
@@ -95,7 +98,7 @@ int main(void)
                 printf("%s\n", ptrCanalRespuesta->textoRespuesta);
                 ptrCanalRespuesta->estado = ESTADO_LIBRE;
                 continue;
-            }
+            } //imprimir error
 
             ptrCanalRespuesta->estado = ESTADO_LIBRE;
 
@@ -118,29 +121,29 @@ int main(void)
                 continue;
             }
 
-            ptrCanalRespuesta->tipoBusqueda = opcionMenu;
+            ptrCanalRespuesta->tipoBusqueda = opcionMenu; //le envio si artista o genero al server 
             strncpy(ptrCanalRespuesta->terminoBusqueda, bufferBusqueda,
                     MAX_CHARS - 1);
             ptrCanalRespuesta->terminoBusqueda[MAX_CHARS - 1] = '\0';
-            ptrCanalRespuesta->estado = ESTADO_PETICION;
+            ptrCanalRespuesta->estado = ESTADO_PETICION; //aca bloqueo al server para que procese la consulta 
 
             while (ptrCanalRespuesta->estado != ESTADO_RESPUESTA) {
-                sleep(1);
+                sleep(1); //aca espero a que termine de procesar 
             }
 
-            printf("\n%s\n", ptrCanalRespuesta->textoRespuesta);
+            printf("\n%s\n", ptrCanalRespuesta->textoRespuesta); //aca finalmente imprimo el body con la respuesta del server
 
-            ptrCanalRespuesta->estado = ESTADO_LIBRE;
+            ptrCanalRespuesta->estado = ESTADO_LIBRE; //libero al server 
         }
         else if (opcionMenu == 3) {
             ptrCanalRespuesta->estado = ESTADO_SALIR;
-            break;
+            break; //me salgo del while infinito 
         }
         else {
             printf("Opcion invalida.\n");
         }
     }
 
-    shmdt(ptrCanalRespuesta);
+    shmdt(ptrCanalRespuesta); // me desconecto de la memoria compartida 
     return 0;
 }
