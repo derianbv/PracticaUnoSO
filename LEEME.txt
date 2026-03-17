@@ -13,8 +13,8 @@ Joel Santiago Neuta Jaspe - jneutaj@unal.edu.co
 Este proyecto implementa un sistema de busqueda interactivo sobre un dataset CSV
 de canciones de Spotify. La arquitectura usa dos procesos no emparentados:
 
-- Servidor: construye indices hash en memoria y atiende peticiones.
-- Interfaz: solicita criterios al usuario y muestra resultados.
+- Servidor: construye indices hash en memoria y atiende peticiones (p1-dataProgram).
+- Interfaz: solicita criterios al usuario y muestra resultados (p1-gui).
 
 La comunicacion entre procesos se realiza con memoria compartida SysV
 (shmget, shmat, shmdt, shmctl).
@@ -23,7 +23,7 @@ La comunicacion entre procesos se realiza con memoria compartida SysV
 2. Dataset y campos usados
 --------------------------
 Archivo principal:
-- spotify_dataset.csv
+- spotify_dataset.csv (debe estar en el mismo directorio al ejecutar)
 
 Campos usados para busqueda:
 - Criterio 1 (principal): artista (columna 0 del CSV)
@@ -53,16 +53,21 @@ Esto evita cargar todo el dataset en memoria.
 ------------------------------
 Se usa un segmento de memoria compartida con la estructura:
 
-- estado: libre, peticion, respuesta, salir
-- tipoBusqueda: 1 artista, 2 genero
-- terminoBusqueda: texto ingresado por el usuario
-- textoRespuesta: bloque de texto con resultados
-- totalResultados: total de coincidencias encontradas
+Campos de RespuestaCanal:
+  - estado:           LIBRE(0), PETICION(1), RESPUESTA(2), SALIR(3)
+  - tipoBusqueda:     1 = artista, 2 = genero
+  - terminoBusqueda:  string ingresado por el usuario (max 255 chars)
+  - textoRespuesta:   bloque de texto con resultados (max 256 KB)
+  - totalResultados:  cantidad total de coincidencias encontradas
 
-Flujo:
-1. Interfaz escribe tipo + termino y cambia estado a PETICION.
-2. Servidor procesa y cambia estado a RESPUESTA.
-3. Interfaz imprime respuesta y devuelve estado a LIBRE.
+Flujo de una consulta:
+  1. Interfaz envia peticion con terminoBusqueda vacio para activar la
+     construccion del indice correspondiente.
+  2. Servidor construye el indice (si no existe) y responde INDICE_LISTO.
+  3. Interfaz pide el termino al usuario.
+  4. Interfaz envia segunda peticion con el termino real.
+  5. Servidor busca en la tabla hash y responde con las lineas del CSV.
+  6. Interfaz imprime la respuesta y devuelve estado a LIBRE.
 
 
 5. Criterios, validaciones y salida
