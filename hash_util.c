@@ -38,7 +38,7 @@ unsigned int hashARam(const char *texto, unsigned int capacidad)
     return (unsigned int) (calcular_hash_fnv1a(texto) % capacidad);
 }
 
-TablaHash *crear_tabla_hash(unsigned int capacidad){ //* en una funcion significa que la direccion de memoria de la tabla hash se devuelve
+TablaHash *crear_tabla_hash(unsigned int capacidad){ //* en una funcion significa que retorna la direccion de memoria de la tabla hash se devuelve
     TablaHash *tabla;
 
     if (capacidad == 0) {
@@ -50,7 +50,7 @@ TablaHash *crear_tabla_hash(unsigned int capacidad){ //* en una funcion signific
         return NULL;
     }
 
-    tabla->cubetas = (NodoHash **) calloc(capacidad, sizeof(NodoHash *));
+    tabla->cubetas = (NodoHash **) calloc(capacidad, sizeof(NodoHash *)); //calloc daja vacia los espacios en memoria, se asigna un arreglo de punteros a NodoHash con tamaño igual a la capacidad de la tabla
     if (tabla->cubetas == NULL) {
         free(tabla);
         return NULL;
